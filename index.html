@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weather Dashboard</title>
+  <!-- Chart.js for the temperature data-visualisation -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --card-2: #273449;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #818cf8;
+      --danger: #f87171;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(1200px 600px at 70% -10%, #1e3a5f 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+    header { max-width: 980px; margin: 0 auto 20px; }
+    h1 { font-size: 1.7rem; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0; font-size: .95rem; }
+    main { max-width: 980px; margin: 0 auto; }
+
+    /* Search */
+    .search-row { display: flex; gap: 10px; margin: 18px 0; flex-wrap: wrap; }
+    input[type="text"] {
+      flex: 1 1 260px;
+      padding: 12px 14px;
+      border-radius: var(--radius);
+      border: 1px solid #334155;
+      background: var(--card);
+      color: var(--text);
+      font-size: 1rem;
+    }
+    input[type="text"]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    button {
+      padding: 12px 18px;
+      border: none;
+      border-radius: var(--radius);
+      background: var(--accent);
+      color: #06283d;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: transform .05s ease, background .2s;
+    }
+    button:hover { background: #7dd3fc; }
+    button:active { transform: scale(.97); }
+    button.ghost { background: var(--card-2); color: var(--text); }
+    button.ghost:hover { background: #334155; }
+
+    /* Saved cities */
+    .saved { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--card-2); color: var(--text);
+      padding: 6px 10px; border-radius: 999px; font-size: .85rem; cursor: pointer;
+      border: 1px solid #334155;
+    }
+    .chip:hover { border-color: var(--accent); }
+    .chip .x { color: var(--muted); font-weight: 700; }
+    .chip .x:hover { color: var(--danger); }
+
+    /* Status messages */
+    .status { color: var(--muted); padding: 8px 0; }
+    .status.error { color: var(--danger); }
+
+    /* Current weather card */
+    .current {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 22px;
+      display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+      margin-bottom: 18px;
+      border: 1px solid #25344b;
+    }
+    .current .emoji { font-size: 3.4rem; line-height: 1; }
+    .current .temp { font-size: 2.6rem; font-weight: 700; }
+    .current .place { font-size: 1.1rem; color: var(--accent); }
+    .current .desc { color: var(--muted); }
+    .metrics { display: flex; gap: 22px; flex-wrap: wrap; margin-left: auto; }
+    .metric .label { color: var(--muted); font-size: .8rem; }
+    .metric .value { font-size: 1.1rem; font-weight: 600; }
+
+    /* Chart card */
+    .chart-card {
+      background: var(--card); border-radius: var(--radius);
+      padding: 18px; margin-bottom: 18px; border: 1px solid #25344b;
+    }
+
+    /* Forecast grid */
+    .forecast { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+    .day {
+      background: var(--card); border: 1px solid #25344b; border-radius: var(--radius);
+      padding: 14px 10px; text-align: center;
+    }
+    .day .dow { color: var(--muted); font-size: .85rem; }
+    .day .ico { font-size: 1.8rem; margin: 6px 0; }
+    .day .hi { font-weight: 700; }
+    .day .lo { color: var(--muted); }
+    .hidden { display: none; }
+    footer { max-width: 980px; margin: 26px auto 0; color: var(--muted); font-size: .8rem; text-align: center; }
+    a { color: var(--accent-2); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🌤️ Weather Dashboard</h1>
+    <p class="sub">Live weather &amp; 7-day forecast — powered by the free Open-Meteo REST API.</p>
+  </header>
+
+  <main>
+    <div class="search-row">
+      <input id="city-input" type="text" placeholder="Search a city (e.g. Rome, Tokyo, New York)…" autocomplete="off" />
+      <button id="search-btn">Search</button>
+      <button id="geo-btn" class="ghost" title="Use my location">📍 My location</button>
+    </div>
+
+    <div id="saved" class="saved"></div>
+    <div id="status" class="status"></div>
+
+    <section id="current" class="current hidden"></section>
+
+    <section id="chart-wrap" class="chart-card hidden">
+      <canvas id="temp-chart" height="120"></canvas>
+    </section>
+
+    <section id="forecast" class="forecast"></section>
+  </main>
+
+  <footer>
+    Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> ·
+    No API key required · Built as tool 4 of 30 by
+    <a href="https://github.com/w1kicartel" target="_blank" rel="noopener">@w1kicartel</a>
+  </footer>
+
+  <script>
+  "use strict";
+
+  /* -------------------------------------------------------------------------
+   * Weather Dashboard
+   * A small, dependency-light app that demonstrates:
+   *   - consuming an external REST API (geocoding + forecast) with fetch/async
+   *   - graceful error handling and loading states
+   *   - data visualisation with Chart.js
+   *   - state persistence with localStorage (recently searched cities)
+   *   - the Geolocation browser API
+   * ---------------------------------------------------------------------- */
+
+  // --- API endpoints (Open-Meteo is free and key-less) ---------------------
+  const GEO_URL = "https://geocoding-api.open-meteo.com/v1/search";
+  const WEATHER_URL = "https://api.open-meteo.com/v1/forecast";
+  const STORAGE_KEY = "weather-dashboard.cities";
+
+  // --- WMO weather-code → human label + emoji ------------------------------
+  // https://open-meteo.com/en/docs (WMO Weather interpretation codes)
+  const WMO = {
+    0:  ["Clear sky", "☀️"],
+    1:  ["Mainly clear", "🌤️"],
+    2:  ["Partly cloudy", "⛅"],
+    3:  ["Overcast", "☁️"],
+    45: ["Fog", "🌫️"],
+    48: ["Rime fog", "🌫️"],
+    51: ["Light drizzle", "🌦️"],
+    53: ["Drizzle", "🌦️"],
+    55: ["Dense drizzle", "🌧️"],
+    56: ["Freezing drizzle", "🌧️"],
+    57: ["Freezing drizzle", "🌧️"],
+    61: ["Light rain", "🌦️"],
+    63: ["Rain", "🌧️"],
+    65: ["Heavy rain", "🌧️"],
+    66: ["Freezing rain", "🌧️"],
+    67: ["Freezing rain", "🌧️"],
+    71: ["Light snow", "🌨️"],
+    73: ["Snow", "🌨️"],
+    75: ["Heavy snow", "❄️"],
+    77: ["Snow grains", "🌨️"],
+    80: ["Rain showers", "🌦️"],
+    81: ["Rain showers", "🌧️"],
+    82: ["Violent showers", "⛈️"],
+    85: ["Snow showers", "🌨️"],
+    86: ["Snow showers", "❄️"],
+    95: ["Thunderstorm", "⛈️"],
+    96: ["Thunderstorm w/ hail", "⛈️"],
+    99: ["Thunderstorm w/ hail", "⛈️"],
+  };
+  const describe = (code) => WMO[code] || ["Unknown", "❓"];
+
+  // --- DOM references ------------------------------------------------------
+  const els = {
+    input:   document.getElementById("city-input"),
+    search:  document.getElementById("search-btn"),
+    geo:     document.getElementById("geo-btn"),
+    saved:   document.getElementById("saved"),
+    status:  document.getElementById("status"),
+    current: document.getElementById("current"),
+    chartWrap: document.getElementById("chart-wrap"),
+    forecast: document.getElementById("forecast"),
+  };
+
+  let chart = null; // holds the Chart.js instance so we can destroy/recreate it
+
+  // --- Small helpers -------------------------------------------------------
+  function setStatus(msg, isError = false) {
+    els.status.textContent = msg || "";
+    els.status.classList.toggle("error", !!isError);
+  }
+
+  function loadCities() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+    catch { return []; }
+  }
+
+  function saveCity(city) {
+    const cities = loadCities().filter((c) => c.name !== city.name);
+    cities.unshift(city);          // most-recent first
+    const trimmed = cities.slice(0, 6);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+    renderSaved();
+  }
+
+  function removeCity(name) {
+    const cities = loadCities().filter((c) => c.name !== name);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cities));
+    renderSaved();
+  }
+
+  function renderSaved() {
+    const cities = loadCities();
+    els.saved.innerHTML = "";
+    cities.forEach((c) => {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.innerHTML = `<span class="name">${c.name}</span> <span class="x" title="remove">✕</span>`;
+      // Click the name → reload that city
+      chip.querySelector(".name").addEventListener("click", () =>
+        loadWeather(c.lat, c.lon, c.name)
+      );
+      // Click ✕ → remove from saved list
+      chip.querySelector(".x").addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeCity(c.name);
+      });
+      els.saved.appendChild(chip);
+    });
+  }
+
+  // --- API calls -----------------------------------------------------------
+
+  /** Resolve a free-text place name into coordinates via the geocoding API. */
+  async function geocode(name) {
+    const url = `${GEO_URL}?name=${encodeURIComponent(name)}&count=1&language=en&format=json`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Geocoding failed (${res.status})`);
+    const data = await res.json();
+    if (!data.results || data.results.length === 0) {
+      throw new Error(`No results for "${name}"`);
+    }
+    const r = data.results[0];
+    const label = [r.name, r.admin1, r.country_code].filter(Boolean).join(", ");
+    return { lat: r.latitude, lon: r.longitude, name: label };
+  }
+
+  /** Fetch current + daily forecast for a coordinate pair. */
+  async function fetchForecast(lat, lon) {
+    const params = new URLSearchParams({
+      latitude: lat,
+      longitude: lon,
+      current: "temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,apparent_temperature",
+      daily: "weather_code,temperature_2m_max,temperature_2m_min",
+      timezone: "auto",
+      forecast_days: "7",
+    });
+    const res = await fetch(`${WEATHER_URL}?${params}`);
+    if (!res.ok) throw new Error(`Forecast failed (${res.status})`);
+    return res.json();
+  }
+
+  // --- Rendering -----------------------------------------------------------
+
+  function renderCurrent(data, placeName) {
+    const c = data.current;
+    const [label, emoji] = describe(c.weather_code);
+    els.current.classList.remove("hidden");
+    els.current.innerHTML = `
+      <div class="emoji">${emoji}</div>
+      <div>
+        <div class="place">${placeName}</div>
+        <div class="temp">${Math.round(c.temperature_2m)}°C</div>
+        <div class="desc">${label} · feels like ${Math.round(c.apparent_temperature)}°C</div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="label">Humidity</div><div class="value">${c.relative_humidity_2m}%</div></div>
+        <div class="metric"><div class="label">Wind</div><div class="value">${Math.round(c.wind_speed_10m)} km/h</div></div>
+      </div>`;
+  }
+
+  function renderForecast(data) {
+    const d = data.daily;
+    els.forecast.innerHTML = "";
+    d.time.forEach((iso, i) => {
+      const date = new Date(iso);
+      const dow = date.toLocaleDateString(undefined, { weekday: "short" });
+      const [, emoji] = describe(d.weather_code[i]);
+      const card = document.createElement("div");
+      card.className = "day";
+      card.innerHTML = `
+        <div class="dow">${i === 0 ? "Today" : dow}</div>
+        <div class="ico">${emoji}</div>
+        <div class="hi">${Math.round(d.temperature_2m_max[i])}°</div>
+        <div class="lo">${Math.round(d.temperature_2m_min[i])}°</div>`;
+      els.forecast.appendChild(card);
+    });
+  }
+
+  function renderChart(data) {
+    const d = data.daily;
+    const labels = d.time.map((iso, i) =>
+      i === 0 ? "Today" : new Date(iso).toLocaleDateString(undefined, { weekday: "short" })
+    );
+    els.chartWrap.classList.remove("hidden");
+    if (chart) chart.destroy(); // avoid leaking canvases between searches
+
+    chart = new Chart(document.getElementById("temp-chart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "High °C",
+            data: d.temperature_2m_max,
+            borderColor: "#fbbf24",
+            backgroundColor: "rgba(251,191,36,.15)",
+            tension: .35, fill: true, pointRadius: 4,
+          },
+          {
+            label: "Low °C",
+            data: d.temperature_2m_min,
+            borderColor: "#38bdf8",
+            backgroundColor: "rgba(56,189,248,.12)",
+            tension: .35, fill: true, pointRadius: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: "#e2e8f0" } } },
+        scales: {
+          x: { ticks: { color: "#94a3b8" }, grid: { color: "#1f2b40" } },
+          y: { ticks: { color: "#94a3b8" }, grid: { color: "#1f2b40" } },
+        },
+      },
+    });
+  }
+
+  // --- Orchestration -------------------------------------------------------
+
+  /** Load + render everything for a coordinate pair. */
+  async function loadWeather(lat, lon, placeName) {
+    setStatus("Loading…");
+    try {
+      const data = await fetchForecast(lat, lon);
+      renderCurrent(data, placeName);
+      renderChart(data);
+      renderForecast(data);
+      saveCity({ name: placeName, lat, lon });
+      setStatus("");
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  }
+
+  /** Search flow: text → geocode → weather. */
+  async function handleSearch() {
+    const name = els.input.value.trim();
+    if (!name) return;
+    setStatus("Searching…");
+    try {
+      const place = await geocode(name);
+      await loadWeather(place.lat, place.lon, place.name);
+    } catch (err) {
+      setStatus(err.message, true);
+    }
+  }
+
+  /** Use the browser Geolocation API. */
+  function handleGeolocate() {
+    if (!navigator.geolocation) {
+      setStatus("Geolocation is not supported by this browser.", true);
+      return;
+    }
+    setStatus("Locating…");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => loadWeather(pos.coords.latitude, pos.coords.longitude, "My location"),
+      ()    => setStatus("Could not get your location (permission denied).", true)
+    );
+  }
+
+  // --- Event wiring --------------------------------------------------------
+  els.search.addEventListener("click", handleSearch);
+  els.input.addEventListener("keydown", (e) => { if (e.key === "Enter") handleSearch(); });
+  els.geo.addEventListener("click", handleGeolocate);
+
+  // --- Init ----------------------------------------------------------------
+  renderSaved();
+  const cities = loadCities();
+  if (cities.length) {
+    // Restore the most recently viewed city on load.
+    loadWeather(cities[0].lat, cities[0].lon, cities[0].name);
+  } else {
+    // Sensible default so the dashboard is never empty.
+    loadWeather(41.9028, 12.4964, "Rome, Lazio, IT");
+  }
+  </script>
+</body>
+</html>
